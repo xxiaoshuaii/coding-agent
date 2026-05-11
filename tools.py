@@ -1,5 +1,6 @@
 import os
 import subprocess
+from pathlib import Path
 
 prompt = """你是运行在用户本地 Windows 终端里的编程助手。
 用户的工作目录是 E:\\Myagent\\agent。
@@ -14,6 +15,9 @@ prompt = """你是运行在用户本地 Windows 终端里的编程助手。
 5. 回复简洁,优先中文,代码用 markdown 代码块
 
 遇到不清楚的需求,先问清楚再动手,不要猜测用户意图。"""
+
+"跳过目录"
+SKIP_DIRS = {".git", "__pycache__", "venv", ".venv", "node_modules", ".idea"}
 
 def read_file(path: str) -> str:
     """真的去读文件,返回内容字符串。"""
@@ -82,6 +86,40 @@ def edit_file(path: str,old: str,new: str,replace_all: bool = False) -> str:
     except Exception as e:
         return f"修改失败: {e}"
 
+def grep(pattern: str, path: str, glob: str = "*") -> str:
+    results = []
+    max_results = 100
+    truncated = False
+    for file in Path(path).rglob(glob):
+        if any(part in SKIP_DIRS for part in file.parts):
+            continue
+        if not file.is_file():
+            continue
+        try:
+            with open(file, "r", encoding="utf-8") as f:
+                content = f.readlines()
+        except Exception:
+            continue
+        for i,line in enumerate(content,start=1):
+            if pattern in line:
+                if len(results) >= max_results:
+                    truncated = True
+                    break
+                results.append(f"{file}:{i}:{line.rstrip()}")
+        if truncated:
+            break
+    if not results:
+        return "没有找到匹配"
+    output = "\n".join(results)
+    if truncated:
+        output += f"\n\n(结果被截断,只显示前 {max_results} 条)"
+    return output
+
+
+
+
+
+
 
 
 # 给 Claude 看的工具说明书(schema)
@@ -144,7 +182,20 @@ Tools = [
             },
             "required": ["path", "old", "new","replace_all"]
         }
-    }
+    },
+{
+        "name": "grep",
+        "description": "用户给出关键字,在文件中查找对应出现的位置。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern":{"type" : "string","description": "需要匹配的对象"},
+                "path": {"type": "string", "description": "填写文件夹路径"}
+
+            },
+            "required": ["pattern","path"]
+        }
+    },
 ]
 
 # 工具名 -> 函数 的分发表
@@ -155,7 +206,8 @@ TOOL_FUNCS = {
     "write_file": write_file,
     "list_files": list_files,
     "run_cmd": run_cmd,
-    "edit_file": edit_file
+    "edit_file": edit_file,
+    "grep": grep
 }
 
 
