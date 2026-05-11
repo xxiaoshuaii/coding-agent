@@ -1,11 +1,13 @@
 import os
 import subprocess
 from pathlib import Path
+from tavily import TavilyClient
+import json
 
 prompt = """你是运行在用户本地 Windows 终端里的编程助手。
 用户的工作目录是 E:\\Myagent\\agent。
 
-你可以使用以下工具:read_file、write_file、list_files、run_cmd。
+你可以使用以下工具:read_file、write_file、list_files、run_cmd,grep,web_search
 
 工作原则:
 1. 修改任何文件前,先用 read_file 确认当前内容
@@ -115,14 +117,21 @@ def grep(pattern: str, path: str, glob: str = "*") -> str:
         output += f"\n\n(结果被截断,只显示前 {max_results} 条)"
     return output
 
+def web_search(query : str) ->str:
+    try:
+        client = TavilyClient(os.environ["TAVILY_API_KEY"])
+        response = client.search(query)
+        results = response["results"]
+        lines = []
+        for i,r in enumerate(results,1):
+            lines.append(f"[{i}] {r['title']}")
+            lines.append(f"URL:{r['url']}")
+            lines.append(r['content'])
+        return "\n".join(lines)
+    except Exception as e:
+        return f"错误信息:{e}"
 
-
-
-
-
-
-
-# 给 Claude 看的工具说明书(schema)
+# 给模型看的工具说明书(schema)
 Tools = [
     {
         "name": "read_file",
@@ -183,7 +192,7 @@ Tools = [
             "required": ["path", "old", "new","replace_all"]
         }
     },
-{
+    {
         "name": "grep",
         "description": "用户给出关键字,在文件中查找对应出现的位置。",
         "input_schema": {
@@ -194,6 +203,18 @@ Tools = [
 
             },
             "required": ["pattern","path"]
+        }
+    },
+    {
+        "name": "web_search",
+        "description": "用户给出搜索的问题,调用工具搜索有关内容。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query":{"type" : "string","description": "需要搜索的问题"}
+
+            },
+            "required": ["query"]
         }
     },
 ]
@@ -207,7 +228,8 @@ TOOL_FUNCS = {
     "list_files": list_files,
     "run_cmd": run_cmd,
     "edit_file": edit_file,
-    "grep": grep
+    "grep": grep,
+    "web_search" : web_search
 }
 
 

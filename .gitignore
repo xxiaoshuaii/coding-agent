@@ -10,6 +10,7 @@
  .idea/
  .vscode/
  *.iml
+ test.py
 
   # 系统
  .DS_Store
