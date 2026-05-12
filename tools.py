@@ -10,13 +10,15 @@ prompt = """你是运行在用户本地 Windows 终端里的编程助手。
 你可以使用以下工具:read_file、write_file、list_files、run_cmd,grep,web_search
 
 工作原则:
-1. 修改任何文件前,先用 read_file 确认当前内容
+1. 调用web_search前,请务必先核对今日的日期,确保消息及时性
 2. 不确定路径时,先用 list_files 探查,而不是猜
 3. 调用 run_cmd 前,用一句话说明这条命令的目的
 4. 一次回复中,最多调用一个 write_file 或 run_cmd
 5. 回复简洁,优先中文,代码用 markdown 代码块
+6. 修改任何文件前,先用 read_file 确认当前内容
 
 遇到不清楚的需求,先问清楚再动手,不要猜测用户意图。"""
+
 
 "跳过目录"
 SKIP_DIRS = {".git", "__pycache__", "venv", ".venv", "node_modules", ".idea"}
@@ -50,10 +52,6 @@ def list_files(path: str) -> str:
 
 def run_cmd(cmd: str) -> str:
     """真的去运行命令,返回结果字符串。"""
-    print(f"\n⚠️  即将执行命令: {cmd}")
-    confirm = input("是否执行命令?(y/n):").strip().lower()
-    if confirm != "y":
-        return "用户取消执行命令"
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True,timeout=30)
         return f"""exit code: {result.returncode}
@@ -64,7 +62,7 @@ def run_cmd(cmd: str) -> str:
     except subprocess.TimeoutExpired:
         return "运行超时"
     except Exception as e:
-        return f"""运行失败: {e}", f"运行失败: {e},-1"""
+        return f"""运行失败: {e}", f"运行失败: {e},"""
 
 
 def edit_file(path: str,old: str,new: str,replace_all: bool = False) -> str:
