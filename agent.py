@@ -3,17 +3,14 @@ from tools import Tools, run_tool, prompt
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
+from prompt_toolkit import PromptSession
+from prompt_toolkit.key_binding import KeyBindings
 import time
 
-CRITIC_PROMPT = """你是一位严格的代码/任务审查员。请检查以下助手的回答：
-1. 是否真的解决了用户最初的请求？
-2. 是否有未处理的边界情况或事实错误？
-3. 是否有更简单/更正确的做法？
 
-如果完全没问题，只回复一个词：APPROVED
-否则，按编号列出具体问题，简洁直接。"""
+MAX_CRITIC_ROUNDS = 1
 
-MAX_CRITIC_ROUNDS = 3
+kb = KeyBindings()
 
 console = Console()
 import os
@@ -26,15 +23,7 @@ client = anthropic.Anthropic(
 # 对话历史
 messages = []
 
-def critic(msg : str) -> str:
-    client.messages.create(
-        model = "deepseek-v4-pro",
-        system = CRITIC_PROMPT,
-        max_tokens = 1024,
-        messages = msg
-    )
-    text_parts = [b.text for b in response.content if b.type == "text"]
-    return "".join(text_parts)
+
 
 # ── 全局Token 用量统计 ──
 total_input_tokens = 0
@@ -42,7 +31,13 @@ total_output_tokens = 0
 
 while True:
     # 1. 拿用户输入
-    user_input = input(">>> ")
+    @kb.add("c-j")  # Ctrl+J 换行
+    def _(event):
+        event.current_buffer.insert_text("\n")
+
+
+    session = PromptSession(key_bindings=kb)
+    user_input = session.prompt(">>> ", multiline= False)
 
     critic_rounds = 0
     # 2. 退出判断
@@ -108,19 +103,7 @@ while True:
 
         # 7. 没工具要调,跳出内层循环回到等用户输入
         if response.stop_reason == "end_turn":
-            if critic_rounds >= MAX_CRITIC_ROUNDS:
-                break
-            with console.status("[dim]Auditing…[/dim]", spinner="dots"):
-                text = critic(messages)
-            if "APPROVED" in text.upper():
-                break
-            console.print(f"[dim]审查反馈: {text}[/dim]")
-            messages.append({
-                "role": "user",
-                "content": f"审查员反馈：{text}\n请根据反馈修正你的回答。"
-            })
-            critic_rounds += 1
-            continue
+            break
 
         # 8. 工具调用:统一交给 run_tool 分发
         if response.stop_reason == "tool_use":
@@ -137,9 +120,9 @@ while True:
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
-                            "content": result
+                            "content": f"{result}"
                         })
-                        continue
+                        break
                 with console.status(f"[dim]running {block.name}…[/dim]", spinner="dots"):
                     result = run_tool(block.name, block.input)
                 console.print(f"[dim]  ✓ done ({len(result)} chars)[/dim]")
