@@ -5,10 +5,13 @@ from rich.live import Live
 from rich.markdown import Markdown
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
+from session.session import SessionManager
 import time
 import sys
 
 kb = KeyBindings()
+
+
 
 console = Console()
 import os
@@ -22,6 +25,11 @@ client = anthropic.Anthropic(
 messages = []
 # 记ctrl+c
 last_interrupt = 0.0
+# 方便同意命令
+approve_cmds = set()
+# 启动时自动恢复上次会话
+session_mgr = SessionManager()
+messages = session_mgr.load()
 
 # ── 全局Token 用量统计 ──
 total_input_tokens = 0
@@ -46,10 +54,31 @@ while True:
         continue
 
     critic_rounds = 0
-    # 2. 退出判断
+    # 2. 判断命令执行方法
     if user_input == "/exit":
         print(f"\n 本轮会话总计: input={total_input_tokens} tokens  output={total_output_tokens}  tokens")
         break
+    elif user_input.startswith("/save"):
+        name = user_input[6:].strip() or "default"
+        session_mgr.save(messages, name)
+        print(f"已保存到 [{name}]")
+        continue
+
+    elif user_input == "/sessions":
+        print(session_mgr.list_sessions())
+        continue
+
+    elif user_input.startswith("/load"):
+        name = user_input[6:].strip()
+        messages = session_mgr.load(name)
+        print(f"已切换到 [{name}]，共 {len(messages)} 条消息")
+        continue
+
+    elif user_input == "/clear":
+        messages = []
+        session_mgr.save(messages)
+        print("会话已清空")
+        continue
 
     turn_in = 0
     turn_out = 0
@@ -102,11 +131,13 @@ while True:
             # 6. 把模型的回复加到 messages
             messages.append({
                 "role": "assistant",
-                "content": response.content
+                "content": [b.model_dump(mode="json") for b in response.content]
             })
 
             # 7. 没工具要调,跳出内层循环回到等用户输入
             if response.stop_reason == "end_turn":
+                # 增加进入记忆
+                session_mgr.save(messages)
                 break
 
             # 8. 工具调用:统一交给 run_tool 分发
@@ -117,16 +148,22 @@ while True:
                         continue
                     console.print(f"[dim]→ {block.name}({str(block.input)[:60]})[/dim]")
                     if block.name == "run_cmd":
-                        confirm = input(f"是否执行命令 `{block.input['cmd']}` ?(y/n): ").strip().lower()
-                        if confirm != "y":
-                            result = "用户拒绝命令"
-                            console.print(f"用户取消命令")
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": f"{result}"
-                            })
-                            break
+                        cmd = block.input['cmd']
+                        confirm = input(f"是否执行命令 `{cmd}` ?(y/n/a): ").strip().lower()
+                        if cmd in approve_cmds:
+                            continue
+                        else:
+                            if confirm == "a":
+                                approve_cmds.add(cmd)
+                            elif confirm == "n":
+                                result = "用户拒绝命令"
+                                console.print(f"用户取消命令")
+                                tool_results.append({
+                                    "type": "tool_result",
+                                   "tool_use_id": block.id,
+                                   "content": f"{result}"
+                                })
+                                break
                     with console.status(f"[dim]running {block.name}…[/dim]", spinner="dots"):
                         result = run_tool(block.name, block.input)
                     console.print(f"[dim]  ✓ done ({len(result)} chars)[/dim]")
@@ -135,6 +172,7 @@ while True:
                         "tool_use_id": block.id,
                         "content": result
                     })
+                    session_mgr.save(messages)
 
                 # 工具结果以 user 角色发回模型,继续内层循环
                 messages.append({
@@ -158,4 +196,19 @@ while True:
         # pop 掉刚加的 user(或者补一条 assistant 占位)
         if messages and messages[-1]["role"] == "user":
             messages.pop()
+        continue
+    except Exception as e:
+        # 网络/API 异常(连接断开、超时等)→ 清理后回到等输入
+        console.print(f"\n[red]网络/API 异常: {type(e).__name__}: {e}[/red]")
+        console.print("[dim]已回滚本轮输入,可重新发送[/dim]")
+        # 把刚 append 的 user 或最后的 tool_result pop 掉,避免 messages 状态不一致
+        while messages and messages[-1]["role"] == "user":
+            messages.pop()
+            # 如果上一条是 assistant 的 tool_use,也要一起回滚(否则 API 会报 tool_use 没配对)
+            if messages and messages[-1]["role"] == "assistant":
+                last = messages[-1]["content"]
+                if isinstance(last, list) and any(getattr(b, "type", None) == "tool_use" for b in last):
+                    messages.pop()
+                    continue
+            break
         continue

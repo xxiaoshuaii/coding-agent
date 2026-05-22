@@ -1,16 +1,26 @@
 import os
 import subprocess
+import time
+import uuid
 from pathlib import Path
 from tavily import TavilyClient
 import json
+import requests
+import dashscope
+from dashscope import ImageSynthesis
 
 prompt = """你是运行在用户本地 Windows 终端里的编程助手。
-  用户的工作目录是 E:\\Myagent\\agent。
 
-  你可以使用以下工具:read_file、write_file、list_files、run_cmd、grep、web_search、edit_file
+  你可以使用以下工具:read_file、write_file、list_files、run_cmd、grep、web_search、edit_file、generate_image
+
+  generate_image 使用规则:
+  - 写 HTML/Markdown/幻灯片时,如果配图能让效果更好,主动调用 generate_image 生成插图
+  - 一次只生成一张图,需要多张就分多次调
+  - 返回的路径是相对路径(./images/xxx.png),直接写到 <img src="..."> 里即可
+  - prompt 要具体,描述画面内容、风格、构图,不要写"一张关于 X 的图"这种空话
 
   工作原则:
-  1. 调用 web_search 前,请务必先核对今日的日期,确保消息及时性
+  1. 调用 web_search 前,请务必先使用 run_cmd 核对今日的日期,确保消息及时性
   2. 不确定路径时,先用 list_files 探查,而不是猜
   3. 调用 run_cmd 前,用一句话说明这条命令的目的
   4. 一次回复中,最多调用一个 write_file 或 run_cmd
@@ -157,6 +167,33 @@ def grep(pattern: str, path: str, glob: str = "*") -> str:
         output += f"\n\n(结果被截断,只显示前 {max_results} 条)"
     return output
 
+def generate_image(prompt: str, size: str = "1024*1024") -> str:
+    """调用通义万相文生图,保存到 ./images/,返回本地相对路径。"""
+    try:
+        dashscope.api_key = ""
+        rsp = ImageSynthesis.call(
+            model="wanx2.1-t2i-turbo",
+            prompt=prompt,
+            n=1,
+            size=size,
+        )
+        if rsp.status_code != 200:
+            return f"生成失败: code={rsp.code} message={rsp.message}"
+
+        url = rsp.output.results[0].url
+        os.makedirs("./images", exist_ok=True)
+        filename = f"{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.png"
+        path = f"./images/{filename}"
+
+        img_data = requests.get(url, timeout=30).content
+        with open(path, "wb") as f:
+            f.write(img_data)
+
+        return f"图像已保存: {path} (尺寸: {size})"
+    except Exception as e:
+        return f"生成失败: {e}"
+
+
 def web_search(query : str) ->str:
     try:
         client = TavilyClient(os.environ["TAVILY_API_KEY"])
@@ -250,6 +287,18 @@ Tools = [
         }
     },
     {
+        "name": "generate_image",
+        "description": "用通义万相生成一张图片,保存到 ./images/ 并返回本地相对路径。适合在写 HTML/幻灯片/Markdown 时配图。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "图片内容的详细描述,越具体越好"},
+                "size":   {"type": "string", "description": "图片尺寸,可选 1024*1024(默认正方形)、1280*720(横屏,适合幻灯片)、720*1280(竖屏)"}
+            },
+            "required": ["prompt"]
+        }
+    },
+    {
         "name": "web_search",
         "description": "用户给出搜索的问题,调用工具搜索有关内容。",
         "input_schema": {
@@ -273,7 +322,8 @@ TOOL_FUNCS = {
     "run_cmd": run_cmd,
     "edit_file": edit_file,
     "grep": grep,
-    "web_search" : web_search
+    "web_search" : web_search,
+    "generate_image": generate_image,
 }
 
 
