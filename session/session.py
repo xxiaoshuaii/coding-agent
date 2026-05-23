@@ -14,6 +14,7 @@ class SessionManager:
         self.current_name = "default"
         self.current_path = self.dir / self.current_name
 
+    # 保存每一次与大模型之间的对话
     def save(self, message: list, name: str | None = None) -> str:
         if name is None:
             # 当前会话还是 "default"(说明还没起过名),且有消息可用 →
@@ -48,6 +49,7 @@ class SessionManager:
             json.dump(data, f, ensure_ascii=False, indent=4)
         return f"保存成功: {self.current_path}"
 
+    # 加载对话
     def load(self, name: str | None = None) -> list:
         """
         name: 会话名（不带 .json），不传就加载最近一次使用的会话
@@ -72,6 +74,7 @@ class SessionManager:
         data = json.loads(path.read_text("utf-8"))
         return data.get("messages", [])
 
+    # 列出对话记录
     def list_sessions(self) -> str:
         """返回格式化的会话列表，给终端显示用"""
         files = sorted(
@@ -86,7 +89,7 @@ class SessionManager:
         for f in files:
             data = json.loads(f.read_text("utf-8"))
             name = data.get("name", f.stem)
-            updated = data.get("updated_at", "未知")
+            updated = data.get("update_time", "未知")
             msg_count = len(data.get("messages", []))
             marker = " ← 当前" if f.stem == self.current_name else ""
             lines.append(f"  [{name}]  {msg_count} 条消息  最后更新: {updated}{marker}")
@@ -105,14 +108,15 @@ class SessionManager:
     def _now(self) -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    def _generate_name(self,first_user_msg:str):
+    def _generate_name(self, first_user_msg: str):
         client = anthropic.Anthropic(
             api_key=os.environ["DEEPSEEK_API_KEY"],
             base_url=os.environ["DEEPSEEK_BASE_URL"],
         )
         resp = client.messages.create(
-            model="deepseek-v4-pro",
-            max_tokens=50,
+            model="deepseek-v4-flash",
+            thinking={"type": "disabled"},
+            max_tokens=10000,
             messages=[
                 {
                     "role": "user",
