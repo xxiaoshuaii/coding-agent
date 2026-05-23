@@ -6,6 +6,7 @@ from rich.markdown import Markdown
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 from session.session import SessionManager
+import questionary
 import time
 import sys
 
@@ -29,7 +30,23 @@ last_interrupt = 0.0
 approve_cmds = set()
 # 启动时自动恢复上次会话
 session_mgr = SessionManager()
-messages = session_mgr.load()
+files = sorted(
+    session_mgr.dir.glob("*.json"),
+    key = lambda f:f.stat().st_mtime,
+    reverse = True,
+)
+if files:
+    choices = [f.stem for f in files] + ["+ 新建会话"]
+    choice = questionary.select("选择会话:",choices = choices).ask()
+    if choice is None or choice == "+ 新建会话":
+        messages = []
+    else:
+        messages = session_mgr.load(choice)
+        console.print(f"[dim]📂 已加载 [{choice}],{len(messages)} 条消息[/dim]")
+else:
+    messages = []
+
+
 
 # ── 全局Token 用量统计 ──
 total_input_tokens = 0
@@ -56,28 +73,44 @@ while True:
     critic_rounds = 0
     # 2. 判断命令执行方法
     if user_input == "/exit":
-        print(f"\n 本轮会话总计: input={total_input_tokens} tokens  output={total_output_tokens}  tokens")
+        console.print(f"\n 本轮会话总计: input={total_input_tokens} tokens  output={total_output_tokens}  tokens")
         break
     elif user_input.startswith("/save"):
         name = user_input[6:].strip() or "default"
         session_mgr.save(messages, name)
-        print(f"已保存到 [{name}]")
+        console.print(f"已保存到 [{name}]")
         continue
 
-    elif user_input == "/sessions":
-        print(session_mgr.list_sessions())
-        continue
+    elif user_input == "/list":
+       files = sorted(
+           session_mgr.dir.glob("*.json"),
+           key = lambda f:f.stat().st_mtime,
+           reverse = True,
+       )
+       if not files:
+           console.print("（暂无已保存的会话）")
+           continue
+       choices = [f.stem for f in files] + ["取消"]
+       choice = questionary.select("切换到哪个会话?",choices=choices).ask()
+
+       if choice is None or choice == "取消":
+           continue
+
+       messages = session_mgr.load(choice)
+       console.print(f"[dim]📂 已切换到 [{choice}],{len(messages)}条消息[/dim]")
+       continue
+
 
     elif user_input.startswith("/load"):
         name = user_input[6:].strip()
         messages = session_mgr.load(name)
-        print(f"已切换到 [{name}]，共 {len(messages)} 条消息")
+        console.print(f"已切换到 [{name}]，共 {len(messages)} 条消息")
         continue
 
     elif user_input == "/clear":
         messages = []
         session_mgr.save(messages)
-        print("会话已清空")
+        console.print("会话已清空")
         continue
 
     turn_in = 0
