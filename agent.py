@@ -52,6 +52,27 @@ else:
 total_input_tokens = 0
 total_output_tokens = 0
 
+
+def rollback_messages(messages: list) -> None:
+    """回滚 messages 末尾本轮未完成的消息。
+    从末尾往前 pop,直到遇到一条"完整收尾"的 assistant 回复(不含 tool_use)为止,
+    避免残留没有配对 tool_result 的 tool_use 导致 API 报错。"""
+    while messages:
+        last = messages[-1]
+        if last["role"] == "user":
+            messages.pop()
+        elif last["role"] == "assistant":
+            content = last["content"]
+            # 内容是 model_dump 后的 dict 列表,所以用 b.get 而不是 getattr
+            if isinstance(content, list) and any(
+                isinstance(b, dict) and b.get("type") == "tool_use" for b in content
+            ):
+                messages.pop()
+            else:
+                break
+        else:
+            break
+
 while True:
     # 1. 拿用户输入
     @kb.add("c-j")  # Ctrl+J 换行
@@ -224,22 +245,12 @@ while True:
             sys.exit(0)
         last_interrupt = now
         console.print("\n[dim]已中断生成,再按一次 Ctrl+C 退出[/dim]")
-        # pop 掉刚加的 user(或者补一条 assistant 占位)
-        if messages and messages[-1]["role"] == "user":
-            messages.pop()
+        # 回滚本轮未完成的消息(包括打断在工具循环中间残留的 tool_use)
+        rollback_messages(messages)
         continue
     except Exception as e:
         # 网络/API 异常(连接断开、超时等)→ 清理后回到等输入
         console.print(f"\n[red]网络/API 异常: {type(e).__name__}: {e}[/red]")
         console.print("[dim]已回滚本轮输入,可重新发送[/dim]")
-        # 把刚 append 的 user 或最后的 tool_result pop 掉,避免 messages 状态不一致
-        while messages and messages[-1]["role"] == "user":
-            messages.pop()
-            # 如果上一条是 assistant 的 tool_use,也要一起回滚(否则 API 会报 tool_use 没配对)
-            if messages and messages[-1]["role"] == "assistant":
-                last = messages[-1]["content"]
-                if isinstance(last, list) and any(getattr(b, "type", None) == "tool_use" for b in last):
-                    messages.pop()
-                    continue
-            break
+        rollback_messages(messages)
         continue
