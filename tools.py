@@ -63,8 +63,8 @@ SKIP_DIRS = {".git", "__pycache__", "venv", ".venv", "node_modules", ".idea"}
 
 def read_file(path: str,offset:int = 0,limit: int = None) -> str:
     """真的去读文件,返回内容字符串。
-    offset 起始页,
-    limit 最后一页"""
+    offset: 从第几行开始读(0 表示从头),
+    limit: 最多读多少行"""
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -72,7 +72,7 @@ def read_file(path: str,offset:int = 0,limit: int = None) -> str:
         if limit is None:
             selected = lines[offset:]
         else:
-            selected = lines[offset:limit]
+            selected = lines[offset:offset + limit]
         content = "".join(selected)
         if offset == 0 and limit is None:
             return content
