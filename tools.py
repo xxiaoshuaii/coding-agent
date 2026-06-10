@@ -170,7 +170,7 @@ def grep(pattern: str, path: str, glob: str = "*") -> str:
 def generate_image(prompt: str, size: str = "1024*1024") -> str:
     """调用通义万相文生图,保存到 ./images/,返回本地相对路径。"""
     try:
-        dashscope.api_key = ""
+        dashscope.api_key = os.environ["DASHSCOPE_API_KEY"]
         rsp = ImageSynthesis.call(
             model="wanx2.1-t2i-turbo",
             prompt=prompt,
