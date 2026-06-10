@@ -26,12 +26,13 @@ class SessionManager:
                         break
                 if first_user:
                     name = self._generate_name(first_user)
-                    self.current_name = name
                 else:
                     name = self.current_name
             else:
                 name = self.current_name
-            self.current_path = self.dir / f"{name}.json"
+        # 无论 name 是传入的还是自动生成的,都要同步更新当前会话名和路径
+        self.current_name = name
+        self.current_path = self.dir / f"{name}.json"
         data = {
             "name": name,
             "create_time": self._now(),
