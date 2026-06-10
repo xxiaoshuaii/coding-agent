@@ -106,15 +106,15 @@ def run_cmd(cmd: str) -> str:
     """真的去运行命令,返回结果字符串。"""
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True,timeout=30)
-        return f"""exit code: {result.returncode}
-                    stdout:
-                    {result.stdout}
-                    stderr:
-                    {result.stderr}"""
+        return (
+            f"exit code: {result.returncode}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
     except subprocess.TimeoutExpired:
         return "运行超时"
     except Exception as e:
-        return f"""运行失败: {e}", f"运行失败: {e},"""
+        return f"运行失败: {e}"
 
 
 def edit_file(path: str,old: str,new: str,replace_all: bool = False) -> str:
@@ -124,7 +124,7 @@ def edit_file(path: str,old: str,new: str,replace_all: bool = False) -> str:
             content = f.read()
             count = content.count(old)
             if count == 0:
-                return "未找到错误"
+                return "未找到匹配文本,请用 read_file 确认 old 的内容与文件完全一致(包括空格和缩进)"
             elif count == 1:
                 content = content.replace(old, new)
             else:
@@ -265,23 +265,23 @@ Tools = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "填写文件夹路径"},
-                "old": {"type": "string", "description": "填写内容"},
-                "new": {"type": "string", "description": "填写内容"},
-                "replace_all": {"type": "boolean", "description": "是否替换所有匹配,默认 false"}
+                "path": {"type": "string", "description": "要修改的文件路径"},
+                "old": {"type": "string", "description": "要被替换的原文本,必须与文件中的内容完全一致(包括空格和缩进)"},
+                "new": {"type": "string", "description": "替换后的新文本"},
+                "replace_all": {"type": "boolean", "description": "是否替换所有匹配,默认 false(只在唯一匹配时替换)"}
             },
-            "required": ["path", "old", "new","replace_all"]
+            "required": ["path", "old", "new"]
         }
     },
     {
         "name": "grep",
-        "description": "用户给出关键字,在文件中查找对应出现的位置。",
+        "description": "在目录下递归搜索包含关键字的行,返回 文件:行号:内容 列表。",
         "input_schema": {
             "type": "object",
             "properties": {
-                "pattern":{"type" : "string","description": "需要匹配的对象"},
-                "path": {"type": "string", "description": "填写文件夹路径"}
-
+                "pattern":{"type" : "string","description": "要搜索的关键字(纯文本匹配,不是正则)"},
+                "path": {"type": "string", "description": "搜索的起始目录路径"},
+                "glob": {"type": "string", "description": "可选,文件名过滤,如 *.py 只搜 Python 文件,默认 * 搜全部"}
             },
             "required": ["pattern","path"]
         }
