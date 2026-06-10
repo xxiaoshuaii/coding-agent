@@ -129,9 +129,11 @@ while True:
         continue
 
     elif user_input == "/clear":
+        # 只清内存,不覆盖磁盘上的旧会话;重置会话名,下次保存时自动生成新会话
         messages = []
-        session_mgr.save(messages)
-        console.print("会话已清空")
+        session_mgr.current_name = "default"
+        session_mgr.current_path = session_mgr.dir / "default.json"
+        console.print("会话已清空,新对话将保存为新会话")
         continue
 
     turn_in = 0
