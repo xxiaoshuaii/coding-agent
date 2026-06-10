@@ -327,9 +327,19 @@ TOOL_FUNCS = {
 }
 
 
+# 单次工具输出的最大字符数,防止超大文件/超长日志撑爆上下文
+MAX_TOOL_OUTPUT = 10000
+
+
 def run_tool(name: str, tool_input: dict) -> str:
     """根据工具名分发到具体函数。tool_input 是 Claude 返回的参数 dict。"""
     func = TOOL_FUNCS.get(name)
     if func is None:
         return f"未知工具: {name}"
-    return func(**tool_input)  # ** 把 dict 解包成关键字参数
+    result = func(**tool_input)  # ** 把 dict 解包成关键字参数
+    if len(result) > MAX_TOOL_OUTPUT:
+        result = result[:MAX_TOOL_OUTPUT] + (
+            f"\n\n(输出共 {len(result)} 字符,已截断只显示前 {MAX_TOOL_OUTPUT} 字符;"
+            f"如需后续内容,可用 offset/limit 等参数分段获取)"
+        )
+    return result
