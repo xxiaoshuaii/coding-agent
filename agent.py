@@ -13,6 +13,10 @@ import sys
 kb = KeyBindings()
 
 
+@kb.add("c-j")  # Ctrl+J 换行
+def _(event):
+    event.current_buffer.insert_text("\n")
+
 
 console = Console()
 import os
@@ -73,14 +77,11 @@ def rollback_messages(messages: list) -> None:
         else:
             break
 
+# PromptSession 只需创建一次,循环内复用(还能保留输入历史,按上下键可翻看)
+session = PromptSession(key_bindings=kb)
+
 while True:
     # 1. 拿用户输入
-    @kb.add("c-j")  # Ctrl+J 换行
-    def _(event):
-        event.current_buffer.insert_text("\n")
-
-
-    session = PromptSession(key_bindings=kb)
     try:
         user_input = session.prompt(">>> ", multiline=False)
     except KeyboardInterrupt:
