@@ -182,21 +182,19 @@ while True:
                     console.print(f"[dim]→ {block.name}({str(block.input)[:60]})[/dim]")
                     if block.name == "run_cmd":
                         cmd = block.input['cmd']
-                        confirm = input(f"是否执行命令 `{cmd}` ?(y/n/a): ").strip().lower()
-                        if cmd in approve_cmds:
-                            continue
-                        else:
+                        # 已批准过的命令直接放行,不再询问
+                        if cmd not in approve_cmds:
+                            confirm = input(f"是否执行命令 `{cmd}` ?(y/n/a): ").strip().lower()
                             if confirm == "a":
                                 approve_cmds.add(cmd)
                             elif confirm == "n":
-                                result = "用户拒绝命令"
-                                console.print(f"用户取消命令")
+                                console.print("用户取消命令")
                                 tool_results.append({
                                     "type": "tool_result",
-                                   "tool_use_id": block.id,
-                                   "content": f"{result}"
+                                    "tool_use_id": block.id,
+                                    "content": "用户拒绝命令"
                                 })
-                                break
+                                continue
                     with console.status(f"[dim]running {block.name}…[/dim]", spinner="dots"):
                         result = run_tool(block.name, block.input)
                     console.print(f"[dim]  ✓ done ({len(result)} chars)[/dim]")
