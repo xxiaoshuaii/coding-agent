@@ -92,7 +92,6 @@ while True:
         console.print("[dim]再按一次 Ctrl+C 退出[/dim]")
         continue
 
-    critic_rounds = 0
     # 2. 判断命令执行方法
     if user_input == "/exit":
         console.print(f"\n 本轮会话总计: input={total_input_tokens} tokens  output={total_output_tokens}  tokens")
