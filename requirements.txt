@@ -1,0 +1,7 @@
+anthropic
+rich
+prompt_toolkit
+questionary
+tavily-python
+dashscope
+requests
